@@ -40,8 +40,9 @@ include $(SCRIPTS_DIR)/Targets.mk
 # Executables
 # --------------------------------------------------------------------------------
 
+CC := cc
 CXX := c++
-WLSCANNER := hyprwayland-scanner
+WLSCANNER := wayland-scanner
 
 # --------------------------------------------------------------------------------
 

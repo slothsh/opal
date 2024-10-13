@@ -1,6 +1,7 @@
 # Makefile Helpers
 # --------------------------------------------------------------------------------
 
+dyn-var = $(eval $(1) = $(2))
 set-var = $(eval $(1) := $(2))
 escape-str = "\"$(1)\""
 definition = -D$(1)=$(call escape-str,$(2))
