@@ -13,13 +13,18 @@ public:
     Renderer();
     virtual ~Renderer();
 
-    void init(wl_display* display);
+    bool init();
+    void draw();
+
     void shutdown();
-    void* display();
-    void* surface();
+
+    EGLDisplay getDisplay() const;
+
+    EGLSurface getSurface() const;
     void setSurface(void* surface);
-    void* config();
-    void* context();
+
+    EGLConfig getConfig() const;
+    EGLContext getContext() const;
 
     void* getPlatformDisplay();
     void* createPlatformWindowSurface(wl_egl_window* window);
@@ -28,6 +33,7 @@ public:
     EGLSurface m_surface;
     EGLConfig m_config;
     EGLContext m_context;
+    wl_callback* m_frame_callback = nullptr;
 
 private:
     PFNEGLGETPLATFORMDISPLAYEXTPROC getPlatformDisplayExt;

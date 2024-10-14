@@ -1,7 +1,7 @@
-#include <GLES2/gl2.h>
 #include <cstring>
 #include <fmt/core.h>
 
+#include <GLES2/gl2.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <wayland-client-protocol.h>
@@ -12,157 +12,165 @@
 #include "compositor.hpp"
 #include "macros.hpp"
 
-void Compositor::layerSurfaceConfigure(void *data,
-		                               zwlr_layer_surface_v1 *surface,
-		                               uint32_t serial,
-		                               uint32_t w,
-		                               uint32_t h)
+static void layerSurfaceConfigure([[maybe_unused]] void* data,
+		                          zwlr_layer_surface_v1 *surface,
+		                          uint32_t serial,
+		                          uint32_t w,
+		                          uint32_t h)
 {
-    Compositor* self = static_cast<Compositor*>(data);
-
-	if (self->_window) {
-		wl_egl_window_resize(self->_window, w, h, 0, 0);
+	if (COMPOSITOR->m_window) {
+		wl_egl_window_resize(COMPOSITOR->m_window, w, h, 0, 0);
 	}
 
 	zwlr_layer_surface_v1_ack_configure(surface, serial);
 }
 
-void Compositor::layerSurfaceClosed(void *data,
-		                            zwlr_layer_surface_v1 *surface)
+static void layerSurfaceClosed([[maybe_unused]] void *data,
+		                       zwlr_layer_surface_v1 *surface)
 {
-    Compositor* self = static_cast<Compositor*>(data);
-	eglDestroySurface(RENDERER->display(), RENDERER->surface());
-	wl_egl_window_destroy(self->_window);
+	eglDestroySurface(RENDERER->getDisplay(), RENDERER->getSurface());
+	wl_egl_window_destroy(COMPOSITOR->m_window);
 	zwlr_layer_surface_v1_destroy(surface);
-	wl_surface_destroy(self->_surface);
+	wl_surface_destroy(COMPOSITOR->m_surface);
 }
 
-void Compositor::registryHandleGlobal(void* data,
-                                      wl_registry* registry,
-                                      uint32_t name,
-                                      const char* interface,
-                                      uint32_t version)
+static void registryHandleGlobal([[maybe_unused]] void* data,
+                                 wl_registry* registry,
+                                 uint32_t name,
+                                 const char* interface,
+                                 uint32_t version)
 {
-    Compositor* self = static_cast<Compositor*>(data);
-
     if (strcmp(interface, wl_compositor_interface.name) == 0) {
-        self->_compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, name, &wl_compositor_interface, version));
+        COMPOSITOR->m_compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, name, &wl_compositor_interface, version));
     }
 
     else if (strcmp(interface, wl_output_interface.name) == 0) {
-		self->_output = static_cast<wl_output*>(wl_registry_bind(registry, name, &wl_output_interface, version));
+		COMPOSITOR->m_output = static_cast<wl_output*>(wl_registry_bind(registry, name, &wl_output_interface, version));
     }
 
     else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
-        self->_layer_shell = static_cast<zwlr_layer_shell_v1*>(wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, version));
+        COMPOSITOR->m_layer_shell = static_cast<zwlr_layer_shell_v1*>(wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, version));
     }
 }
 
-void Compositor::registryHandleGlobalRemove([[maybe_unused]] void* data,
-                                            [[maybe_unused]] wl_registry* registry,
-                                            [[maybe_unused]] uint32_t name)
+static void registryHandleGlobalRemove([[maybe_unused]] void* data,
+                                       [[maybe_unused]] wl_registry* registry,
+                                       [[maybe_unused]] uint32_t name)
 {
     // Nothing to do here...
 }
 
-void Compositor::surfaceFrameCallback(void *data, wl_callback *cb, [[maybe_unused]] uint32_t time) {
-	Compositor* self = static_cast<Compositor*>(data);
-	wl_callback_destroy(cb);
-	self->_frame_callback = nullptr;
-	self->draw();
-}
-
 Compositor::Compositor() {}
 
-Compositor::~Compositor() {}
+Compositor::~Compositor() {
+    if (_initialised)
+        shutdown();
+}
 
-void Compositor::init() {
-    _display = wl_display_connect(NULL);
-    if (!_display) {
+bool Compositor::init() {
+    m_display = wl_display_connect(NULL);
+    if (!m_display) {
         fmt::print(stderr, "[ERROR] could not connect to Wayland display\n");
-        return;
+        return false;
     }
 
-    _registry = wl_display_get_registry(_display);
-    if (!_registry) {
+    m_registry = wl_display_get_registry(m_display);
+    if (!m_registry) {
         fmt::print(stderr, "[ERROR] could not fetch display registry\n");
-        return;
+        return false;
     }
 
-    wl_registry_add_listener(_registry, &Compositor::s_registry_listener, this);
-    wl_display_roundtrip(_display);
+    static constexpr wl_registry_listener registry_listener = {
+        .global = registryHandleGlobal,
+        .global_remove = registryHandleGlobalRemove,
+    };
 
-    _surface = wl_compositor_create_surface(_compositor);
-    wl_surface_commit(_surface);
+    wl_registry_add_listener(m_registry, &registry_listener, nullptr);
+    wl_display_roundtrip(m_display);
 
-    if (!_layer_shell) {
+    m_surface = wl_compositor_create_surface(m_compositor);
+    wl_surface_commit(m_surface);
+
+    if (!m_layer_shell) {
         fmt::print(stderr, "[ERROR] could not create layer shell\n");
-        return;
+        return false;
     }
 
-    RENDERER->init(_display);
-    fmt::print("renderer initialised...\n");
-
-    _surface = wl_compositor_create_surface(_compositor);
-    if (!_surface) {
+    m_surface = wl_compositor_create_surface(m_compositor);
+    if (!m_surface) {
         fmt::print(stderr, "[ERROR] could not create surface\n");
-        return;
+        return false;
     }
 
-    _layer_surface = zwlr_layer_shell_v1_get_layer_surface(_layer_shell,
-                                                           _surface,
-                                                           _output,
+    m_layer_surface = zwlr_layer_shell_v1_get_layer_surface(m_layer_shell,
+                                                           m_surface,
+                                                           m_output,
                                                            ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
                                                            "foobarbaz");
 
-    if (!_layer_surface) {
+    if (!m_layer_surface) {
         fmt::print(stderr, "[ERROR] could not create layer surface\n");
     }
 
-    zwlr_layer_surface_v1_set_size(_layer_surface, 1620, 56);
-    zwlr_layer_surface_v1_set_exclusive_zone(_layer_surface, 0);
-    zwlr_layer_surface_v1_set_keyboard_interactivity(_layer_surface, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
-    zwlr_layer_surface_v1_set_anchor(_layer_surface, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
-    zwlr_layer_surface_v1_set_margin(_layer_surface, 0, 0, 0, 0);
-    zwlr_layer_surface_v1_add_listener(_layer_surface, &layer_surface_listener, this);
-    wl_surface_commit(_surface);
-    wl_display_roundtrip(_display);
+    zwlr_layer_surface_v1_set_size(m_layer_surface, 1620, 56);
+    zwlr_layer_surface_v1_set_exclusive_zone(m_layer_surface, 0);
+    zwlr_layer_surface_v1_set_keyboard_interactivity(m_layer_surface, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+    zwlr_layer_surface_v1_set_anchor(m_layer_surface, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+    zwlr_layer_surface_v1_set_margin(m_layer_surface, 0, 0, 0, 0);
 
-    _window = wl_egl_window_create(_surface, 1620, 56);
-    if (!_window) {
+    static constexpr zwlr_layer_surface_v1_listener layer_surface_listener = {
+        .configure = layerSurfaceConfigure,
+        .closed = layerSurfaceClosed,
+    };
+
+    zwlr_layer_surface_v1_add_listener(m_layer_surface, &layer_surface_listener, nullptr);
+
+    wl_surface_commit(m_surface);
+    wl_display_roundtrip(m_display);
+
+    m_window = wl_egl_window_create(m_surface, 1620, 56);
+    if (!m_window) {
         fmt::print(stderr, "[ERROR] could not create a Wayland EGL window instance\n");
-        return;
+        return false;
     }
 
-    auto const ptr = RENDERER->createPlatformWindowSurface(_window);
+    wl_display_roundtrip(m_display);
 
-    RENDERER->setSurface(ptr);
-    if (RENDERER->surface() == EGL_NO_SURFACE) {
-        fmt::print(stderr, "[ERROR] could not initialize EGL window surface\n");
-        return;
+    RENDERER = std::make_unique<Renderer>();
+    _initialised = RENDERER->init();
+    fmt::print("renderer initialised...\n");
+
+    return _initialised;
+}
+
+void Compositor::start() {
+    if (_initialised) {
+        RENDERER->draw();
+        while (poll()) {
+            // Main Event Loop
+        }
     }
-
-    wl_display_roundtrip(_display);
 }
 
 void Compositor::shutdown() {
-    if (_display)
-        wl_display_disconnect(_display);
+    _initialised = false;
+
+    if (RENDERER)
+        RENDERER->shutdown();
+
+    if (m_display)
+        wl_display_disconnect(m_display);
+
+    m_display = nullptr;
+    m_registry = nullptr;
+    m_surface = nullptr;
+    m_compositor = nullptr;
+    m_output = nullptr;
+    m_window = nullptr;
+    m_layer_shell = nullptr;
+    m_layer_surface = nullptr;
 }
 
-void Compositor::draw() {
-	eglMakeCurrent(RENDERER->display(), RENDERER->surface(), RENDERER->surface(), RENDERER->context());
-
-	glViewport(0, 0, 1620, 56);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glClearColor(0, 0.5, 0.5, 1);
-
-	_frame_callback = wl_surface_frame(_surface);
-	wl_callback_add_listener(_frame_callback, &frame_listener, this);
-
-	eglSwapBuffers(RENDERER->display(), RENDERER->surface());
-}
-
-bool Compositor::online() {
-    return wl_display_dispatch(_display) != -1;
+bool Compositor::poll() {
+    return wl_display_dispatch(m_display) != -1;
 }
