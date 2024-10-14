@@ -3,10 +3,10 @@
 #include <fmt/core.h>
 #include "taskbar.hpp"
 #include "compositor.hpp"
-#include "renderer_egl.hpp"
+#include "renderer.hpp"
 
 int main() {
-    RENDERER = std::make_unique<EglRenderer>();
+    RENDERER = std::make_unique<Renderer>();
     COMPOSITOR = std::make_unique<Compositor>();
     COMPOSITOR->init();
 
