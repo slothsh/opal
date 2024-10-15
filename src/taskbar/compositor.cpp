@@ -1,7 +1,7 @@
 #include <cstring>
 #include <fmt/core.h>
 
-#include <GLES2/gl2.h>
+#include <GLES3/gl3.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <wayland-client-protocol.h>
@@ -106,7 +106,7 @@ bool Compositor::init() {
                                                            m_surface,
                                                            m_output,
                                                            ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
-                                                           "foobarbaz");
+                                                           "opal-shell-taskbar");
 
     if (!m_layer_surface) {
         fmt::print(stderr, "[ERROR] could not create layer surface\n");
@@ -171,6 +171,6 @@ void Compositor::shutdown() {
     m_layer_surface = nullptr;
 }
 
-bool Compositor::poll() {
+inline bool Compositor::poll() {
     return wl_display_dispatch(m_display) != -1;
 }

@@ -29,7 +29,7 @@ endef
 opal-common: opal-common-build
 
 .PHONY: opal-common-build
-opal-common-build: configure
+opal-common-build: configure wlprotocols
 	$(call prepare_opal_common)
 	@mkdir -p $(BUILD_DIR)/obj/$(BUILD_NAME)
 	$(MAKE) BUILD_NAME=$(BUILD_NAME) $(OBJS)

@@ -4,7 +4,7 @@
 
 #include <fmt/core.h>
 
-#include <GLES2/gl2.h>
+#include <GLES3/gl3.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <wayland-egl-core.h>
@@ -18,25 +18,6 @@
     if (m_display) { eglTerminate(m_display); }                                     \
 	eglReleaseThread();                                                             \
 } while(1); return false
-
-static const EGLint config_attribs[] = {
-	EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-	EGL_RED_SIZE, 1,
-	EGL_GREEN_SIZE, 1,
-	EGL_BLUE_SIZE, 1,
-	EGL_ALPHA_SIZE, 1,
-	EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-	EGL_NONE,
-};
-
-static const EGLint context_attribs[] = {
-	EGL_CONTEXT_CLIENT_VERSION, 2,
-	EGL_NONE,
-};
-
-Renderer::Renderer() {}
-
-Renderer::~Renderer() {}
 
 bool Renderer::init() {
     std::string_view client_exts_str = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
@@ -60,13 +41,13 @@ bool Renderer::init() {
 		return false;
 	}
 
-	getPlatformDisplayExt = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
+    static PFNEGLGETPLATFORMDISPLAYEXTPROC getPlatformDisplayExt = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
 	if (getPlatformDisplayExt == nullptr) {
 		fmt::print(stderr, "Failed to get eglGetPlatformDisplayEXT\n");
 		return false;
 	}
 
-	createPlatformWindowSurfaceExt = reinterpret_cast<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC>(eglGetProcAddress("eglCreatePlatformWindowSurfaceEXT"));
+	static PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC createPlatformWindowSurfaceExt = reinterpret_cast<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC>(eglGetProcAddress("eglCreatePlatformWindowSurfaceEXT"));
 	if (createPlatformWindowSurfaceExt == NULL) {
 		fmt::print(stderr, "Failed to get eglCreatePlatformWindowSurfaceEXT\n");
 		return false;
@@ -84,6 +65,17 @@ bool Renderer::init() {
 	}
 
 	EGLint matched = 0;
+
+    static const EGLint config_attribs[] = {
+	    EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+	    EGL_RED_SIZE, 1,
+	    EGL_GREEN_SIZE, 1,
+	    EGL_BLUE_SIZE, 1,
+	    EGL_ALPHA_SIZE, 1,
+	    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+	    EGL_NONE,
+    };
+
 	if (!eglChooseConfig(m_display, config_attribs, &m_config, 1, &matched)) {
 		fmt::print(stderr, "eglChooseConfig failed\n");
 		TERMINATE();
@@ -93,13 +85,18 @@ bool Renderer::init() {
 		TERMINATE();
 	}
 
+    static const EGLint context_attribs[] = {
+	    EGL_CONTEXT_CLIENT_VERSION, 2,
+	    EGL_NONE,
+    };
+
 	m_context = eglCreateContext(m_display, m_config, EGL_NO_CONTEXT, context_attribs);
 	if (m_context == EGL_NO_CONTEXT) {
 		fmt::print(stderr, "Failed to create EGL context\n");
 		TERMINATE();
 	}
 
-    setSurface(createPlatformWindowSurface(COMPOSITOR->m_window));
+    setSurface(createPlatformWindowSurfaceExt(RENDERER->m_display, RENDERER->m_config, COMPOSITOR->m_window, nullptr));
     if (m_surface == EGL_NO_SURFACE) {
         fmt::print(stderr, "[ERROR] could not initialize EGL window surface\n");
 		TERMINATE();
@@ -149,19 +146,11 @@ EGLSurface Renderer::getSurface() const {
 
 void Renderer::setSurface(void* surface) {
     if (surface)
-        this->m_surface = surface;
+        m_surface = surface;
 }
 
 EGLConfig Renderer::getConfig() const {
     return m_config;
-}
-
-void* Renderer::getPlatformDisplay() {
-    return nullptr;
-}
-
-void* Renderer::createPlatformWindowSurface(wl_egl_window* window) {
-    return createPlatformWindowSurfaceExt(m_display, m_config, window, nullptr);
 }
 
 EGLContext Renderer::getContext() const {

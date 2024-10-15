@@ -16,7 +16,7 @@ public:
     bool init();
     void start();
     void shutdown();
-    bool poll();
+    inline bool poll();
 
     wl_display* m_display = nullptr;
     wl_registry* m_registry = nullptr;

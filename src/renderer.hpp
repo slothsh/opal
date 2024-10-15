@@ -10,13 +10,9 @@
 
 class Renderer {
 public:
-    Renderer();
-    virtual ~Renderer();
-
     bool init();
-    void draw();
-
     void shutdown();
+    void draw();
 
     EGLDisplay getDisplay() const;
 
@@ -26,18 +22,11 @@ public:
     EGLConfig getConfig() const;
     EGLContext getContext() const;
 
-    void* getPlatformDisplay();
-    void* createPlatformWindowSurface(wl_egl_window* window);
-
     EGLDisplay m_display;
     EGLSurface m_surface;
     EGLConfig m_config;
     EGLContext m_context;
     wl_callback* m_frame_callback = nullptr;
-
-private:
-    PFNEGLGETPLATFORMDISPLAYEXTPROC getPlatformDisplayExt;
-    PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC createPlatformWindowSurfaceExt;
 };
 
 inline std::unique_ptr<Renderer> RENDERER;
